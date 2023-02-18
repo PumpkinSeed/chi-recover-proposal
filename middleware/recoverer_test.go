@@ -65,3 +65,42 @@ func TestRecovererAbortHandler(t *testing.T) {
 
 	r.ServeHTTP(w, req)
 }
+
+func TestRecovererCustomParser(t *testing.T) {
+	r := chi.NewRouter()
+
+	oldRecovererErrorWriter := recovererErrorWriter
+	defer func() { recovererErrorWriter = oldRecovererErrorWriter }()
+	buf := &bytes.Buffer{}
+	recovererErrorWriter = buf
+
+	SetRecoverParser(custom{})
+	r.Use(Recoverer)
+	r.Get("/", panicingHandler)
+
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	res, _ := testRequest(t, ts, "GET", "/", nil)
+	assertEqual(t, res.StatusCode, http.StatusInternalServerError)
+
+	lines := strings.Split(buf.String(), "\n")
+	if len(lines) > 0 {
+		if !strings.Contains(lines[0], "goroutine") {
+			t.Fatalf("First func call line should refer to goroutine, but actual line:\n%v\n", lines[0])
+		}
+		return
+	}
+	t.Fatal("First func call line should be something like 'goroutine 18 [running]:'")
+}
+
+type custom struct{}
+
+func (c custom) Parse(debugStack []byte, rvr interface{}) ([]byte, error) {
+	stack := strings.Split(string(debugStack), "\n")
+
+	if len(stack) > 0 {
+		return []byte(stack[0]), nil
+	}
+	return debugStack, nil
+}

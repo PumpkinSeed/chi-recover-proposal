@@ -14,6 +14,12 @@ import (
 	"strings"
 )
 
+type RecoverParserIface interface {
+	Parse(debugStack []byte, rvr interface{}) ([]byte, error)
+}
+
+var RecoverParser RecoverParserIface = prettyStack{}
+
 // Recoverer is a middleware that recovers from panics, logs the panic (and a
 // backtrace), and returns a HTTP 500 (Internal Server Error) status if
 // possible. Recoverer prints a request ID if one is provided.
@@ -51,8 +57,7 @@ var recovererErrorWriter io.Writer = os.Stderr
 
 func PrintPrettyStack(rvr interface{}) {
 	debugStack := debug.Stack()
-	s := prettyStack{}
-	out, err := s.parse(debugStack, rvr)
+	out, err := RecoverParser.Parse(debugStack, rvr)
 	if err == nil {
 		recovererErrorWriter.Write(out)
 	} else {
@@ -61,10 +66,14 @@ func PrintPrettyStack(rvr interface{}) {
 	}
 }
 
+func SetRecoverParser(p RecoverParserIface) {
+	RecoverParser = p
+}
+
 type prettyStack struct {
 }
 
-func (s prettyStack) parse(debugStack []byte, rvr interface{}) ([]byte, error) {
+func (s prettyStack) Parse(debugStack []byte, rvr interface{}) ([]byte, error) {
 	var err error
 	useColor := true
 	buf := &bytes.Buffer{}
